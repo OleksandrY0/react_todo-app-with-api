@@ -11,7 +11,7 @@ interface Props {
   setEditingId: (id: number | null) => void;
   editingTitle: string;
   setEditingTitle: (title: string) => void;
-  handleChangeTodo: (todo: Todo, newTitle: string) => void;
+  handleChangeTodo: (todo: Todo, newTitle: string) => boolean;
 }
 
 export const TodoList: React.FC<Props> = ({

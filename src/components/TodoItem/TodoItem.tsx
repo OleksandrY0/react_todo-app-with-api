@@ -11,7 +11,7 @@ interface Props {
   setEditingId: (id: number | null) => void;
   editingTitle: string;
   setEditingTitle: (title: string) => void;
-  handleChangeTodo: (todo: Todo, editingTitle: string) => void;
+  handleChangeTodo: (todo: Todo, editingTitle: string) => boolean;
 }
 
 export const TodoItem: React.FC<Props> = ({
@@ -25,11 +25,16 @@ export const TodoItem: React.FC<Props> = ({
   setEditingTitle,
   handleChangeTodo,
 }) => {
-  const handleOnKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+  const handleOnKeyDown = async (
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
     if (event.key === 'Enter') {
       event.preventDefault();
-      handleChangeTodo(todo, editingTitle);
-      setEditingId(null);
+      const success = await handleChangeTodo(todo, editingTitle);
+
+      if (success) {
+        setEditingId(null);
+      }
     }
 
     if (event.key === 'Escape') {
@@ -61,9 +66,16 @@ export const TodoItem: React.FC<Props> = ({
 
       {editingId === todo.id ? (
         <input
+          data-cy="TodoTitleField"
           value={editingTitle}
           onChange={event => setEditingTitle(event.target.value)}
-          onBlur={() => handleChangeTodo(todo, editingTitle)}
+          onBlur={async () => {
+            const success = await handleChangeTodo(todo, editingTitle);
+
+            if (success) {
+              setEditingId(null);
+            }
+          }}
           onKeyDown={event => handleOnKeyDown(event)}
           autoFocus
           className="todoapp__new-todo todo__title"
@@ -81,21 +93,24 @@ export const TodoItem: React.FC<Props> = ({
         </span>
       )}
 
-      <button
-        type="button"
-        className="todo__remove"
-        data-cy="TodoDelete"
-        onClick={() => handleDelete(todo)}
-      >
-        ×
-      </button>
-
-      {(todo.loading || deletingIds.includes(todo.id)) && (
-        <div data-cy="TodoLoader" className="modal overlay">
-          <div className="modal-background has-background-white-ter" />
-          <div className="loader" />
-        </div>
+      {editingId !== todo.id && (
+        <button
+          type="button"
+          className="todo__remove"
+          data-cy="TodoDelete"
+          onClick={() => handleDelete(todo)}
+        >
+          ×
+        </button>
       )}
+
+      <div
+        data-cy="TodoLoader"
+        className={`modal overlay ${todo.loading || deletingIds.includes(todo.id) ? 'is-active' : 'hidden'}`}
+      >
+        <div className="modal-background has-background-white-ter" />
+        <div className="loader" />
+      </div>
     </div>
   );
 };

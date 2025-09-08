@@ -98,18 +98,18 @@ export const App: React.FC = () => {
     };
 
     setTempTodo(temp);
-    setNewTodo('');
 
     try {
       const addedTodo = await addTodo(title, USER_ID);
 
       setTodos(prev => [...prev, { ...addedTodo, loading: false }]);
-      setTempTodo(null);
+      setNewTodo('');
     } catch {
       setErrorMessage('Unable to add a todo');
     } finally {
       setAdding(false);
       inputRef.current?.focus();
+      setTempTodo(null);
     }
   };
 
@@ -122,6 +122,7 @@ export const App: React.FC = () => {
       setErrorMessage('Unable to delete a todo');
     } finally {
       setDeletingIds(prev => prev.filter(id => id !== todo.id));
+      inputRef.current?.focus();
     }
   };
 
@@ -151,25 +152,51 @@ export const App: React.FC = () => {
 
     setDeletingIds(prev => [...prev, ...completedIds]);
 
-    try {
-      await Promise.all(completedTodos.map(todo => deleteTodo(todo)));
-      setTodos(prev => prev.filter(t => !t.completed));
-    } catch {
-      setErrorMessage('Unable to clear completed todos');
-    } finally {
-      setDeletingIds(prev => prev.filter(id => !completedIds.includes(id)));
+    const results = await Promise.allSettled(completedTodos.map(deleteTodo));
+
+    setTodos(prev =>
+      prev.filter(
+        t =>
+          !completedIds.includes(t.id) ||
+          results[completedIds.indexOf(t.id)].status === 'rejected',
+      ),
+    );
+
+    // якщо хоч один failed
+    if (results.some(r => r.status === 'rejected')) {
+      setErrorMessage('Unable to delete a todo');
     }
+
+    setDeletingIds(prev => prev.filter(id => !completedIds.includes(id)));
+    setTimeout(() => inputRef.current?.focus(), 0);
   };
 
   const handleChangeTodo = async (todo: Todo, newTitle: string) => {
-    if (newTitle === todo.title) {
-      return;
+    const trimmedTitle = newTitle.trim();
+
+    if (trimmedTitle === todo.title) {
+      return true;
     }
 
-    if (newTitle.trim() === '') {
-      handleDelete(todo);
+    if (trimmedTitle === '') {
+      setTodos(prev =>
+        prev.map(t => (t.id === todo.id ? { ...t, loading: true } : t)),
+      );
 
-      return;
+      try {
+        await deleteTodo(todo);
+        setTodos(prev => prev.filter(t => t.id !== todo.id));
+
+        return true;
+      } catch {
+        setErrorMessage('Unable to delete a todo');
+
+        return false;
+      } finally {
+        setTodos(prev =>
+          prev.map(t => (t.id === todo.id ? { ...t, loading: false } : t)),
+        );
+      }
     }
 
     setTodos(prev =>
@@ -177,13 +204,15 @@ export const App: React.FC = () => {
     );
 
     try {
-      const newTd = await changeTodoTitle(todo, newTitle);
+      const newTd = await changeTodoTitle(todo, trimmedTitle);
 
-      setTodos(prev => {
-        return prev.map(t => (t.id === todo.id ? newTd : t));
-      });
+      setTodos(prev => prev.map(t => (t.id === todo.id ? newTd : t)));
+
+      return true;
     } catch {
-      setErrorMessage('Unable to update todo');
+      setErrorMessage('Unable to update a todo');
+
+      return false;
     } finally {
       setTodos(prev =>
         prev.map(t => (t.id === todo.id ? { ...t, loading: false } : t)),
@@ -192,31 +221,36 @@ export const App: React.FC = () => {
   };
 
   const handleCompleteAll = async (todoList: Todo[]) => {
-    const todosToComplete = todoList.filter(todo => !todo.completed);
-    const todosToCompleteIds = todosToComplete.map(todo => todo.id);
+    const allCompleted = todoList.every(todo => todo.completed);
+
+    const todosToToggle = allCompleted
+      ? todoList // всі, бо треба зробити незавершеними
+      : todoList.filter(todo => !todo.completed); // тільки незавершені
+
+    const todosToToggleIds = todosToToggle.map(todo => todo.id);
 
     setTodos(prev =>
       prev.map(t =>
-        todosToCompleteIds.includes(t.id) ? { ...t, loading: true } : t,
+        todosToToggleIds.includes(t.id) ? { ...t, loading: true } : t,
       ),
     );
 
     try {
-      await Promise.all(todosToComplete.map(todo => changeTodoCompleted(todo)));
+      await Promise.all(todosToToggle.map(todo => changeTodoCompleted(todo)));
 
-      setTodos(prev => {
-        return prev.map(t =>
-          todosToCompleteIds.includes(t.id)
-            ? { ...t, completed: !t.completed }
+      setTodos(prev =>
+        prev.map(t =>
+          todosToToggleIds.includes(t.id)
+            ? { ...t, completed: !allCompleted }
             : t,
-        );
-      });
+        ),
+      );
     } catch {
-      setErrorMessage('Unable to update todos');
+      setErrorMessage('Unable to update todo');
     } finally {
       setTodos(prev =>
         prev.map(t =>
-          todosToCompleteIds.includes(t.id) ? { ...t, loading: false } : t,
+          todosToToggleIds.includes(t.id) ? { ...t, loading: false } : t,
         ),
       );
     }
@@ -231,13 +265,14 @@ export const App: React.FC = () => {
       <div className="todoapp__content">
         <header className="todoapp__header">
           {/* this button should have `active` class only if all todos are completed */}
-          <button
-            type="button"
-            className="todoapp__toggle-all active"
-            data-cy="ToggleAllButton"
-            onClick={() => handleCompleteAll(todos)}
-          />
-
+          {todos.length > 0 && (
+            <button
+              type="button"
+              className={`todoapp__toggle-all ${todos.length > 0 && todos.every(t => t.completed) ? 'active' : ''}`}
+              data-cy="ToggleAllButton"
+              onClick={() => handleCompleteAll(todos)}
+            />
+          )}
           {/* Add a todo on form submit */}
           <form onSubmit={e => handleSubmit(e)}>
             <input
